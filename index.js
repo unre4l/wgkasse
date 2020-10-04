@@ -68,14 +68,6 @@ const Extra = require('telegraf/extra')
 // const stage = new Stage()
 // stage.register(EinkaufScene)
 
-const buyGifs = [
-  'l0MYDoN32puQXNmx2',
-  'gTURHJs4e2Ies',
-  'fAhOtxIzrTxyE',
-  'cUSJDZLX6zab6',
-  'LZyFp6pObiyuk',
-]
-
 const WgGroupOnly = async ({chat, from: {id, first_name}}, next) => {
   if (chat.id !== parseInt(process.env.WG_KASSSE_GROUP_ID, 10)) {
     return;
@@ -101,23 +93,6 @@ bot.use(session())
 // bot.action('cancel', (ctx) => ctx.scene.leave())
 
 
-bot.hears(/paypal.me\/[\w]+/, (ctx) => {
-  const paypal = `https://${ctx.match[0].trim()}`;
-  Kasse.paypal(ctx.from.id, paypal)
-  return ctx.replyWithVideo('https://i.giphy.com/media/dykJfX4dbM0Vy/100w.gif', {caption: `${paypal} ist für ${ctx.from.first_name} hinterlegt.`})
-})
-
-
-bot.hears(/([a-zA-ZüöäÜÖÄ\ \_\-]{4,}) ([0-9]+(,|.)?[0-9]*) ?€/, (ctx) => {
-  const bezeichnung = ctx.match[1].trim();
-  const betrag = ctx.match[2].trim();
-  console.log(bezeichnung, betrag)
-  Kasse.ausgabe(ctx.from.id, betrag, bezeichnung)
-  return ctx.replyWithVideo(
-    `https://i.giphy.com/media/${buyGifs[Math.floor(Math.random() * buyGifs.length)]}/100w.gif`,
-    {caption: `${ctx.from.first_name} hat ${bezeichnung} für ${betrag}€ gekauft.`})
-})
-
 // bot.hears('meine schulden', (ctx) => {
 //   const empfaenger = ctx.message.entities[0].user
 //   // const bezeichnung = ctx.match[1].trim();
@@ -139,10 +114,38 @@ bot.command('pyramid', (ctx) => {
 })
 
 bot.command('schulden', async (ctx) => {
-  const schulden = await Kasse.schulden(ctx.from.id)
-  console.log(leute, ausgaben)
+  await Kasse.schulden(ctx.from.id)
+  // console.log(leute, ausgaben)
 })
 
+// register spendierhosen
+bot.hears(/([a-zA-ZüöäÜÖÄ\ß\:\ \_\-]{4,}) ([0-9]+(,|.)?[0-9]*) ?€/, (ctx) => {
+  const [_, bezeichnung, betrag] = ctx.match;
+  Kasse.ausgabe(ctx.from.id, betrag, bezeichnung)
+  const gifs = ['l0MYDoN32puQXNmx2', 'gTURHJs4e2Ies', 'fAhOtxIzrTxyE', 'cUSJDZLX6zab6', 'LZyFp6pObiyuk'];
+  const gif = `https://i.giphy.com/media/${gifs[Math.floor(Math.random() * gifs.length)]}/100w.gif`
+  return ctx.replyWithVideo(gif,{caption: `${ctx.from.first_name} hat ${bezeichnung} für ${betrag}€ gekauft.`})
+})
+
+// set paypal adress for quick cashflow
+bot.hears(/paypal.me\/[\w]+/, (ctx) => {
+  const paypal = `https://${ctx.match[0].trim()}`;
+  Kasse.paypal(ctx.from.id, paypal)
+  return ctx.replyWithVideo('https://i.giphy.com/media/dykJfX4dbM0Vy/100w.gif', {caption: `${paypal} ist für ${ctx.from.first_name} hinterlegt.`})
+})
+
+// handle relevant wgmenschen
+bot.on(
+  'new_chat_members',
+  ({message: {new_chat_members}}) => new_chat_members.forEach(({id, first_name}) => Kasse.wgler(id, first_name))
+)
+bot.on(
+  'left_chat_member',
+  ({message: {left_chat_member: {id}}}) => Kasse.keinWgler(id)
+)
+
+// Bahhof? fallback for things beyond understanding
 bot.hears(/.*/, (ctx) => ctx.reply('🚉'))
+
 bot.launch()
 

@@ -1,3 +1,4 @@
+require('dotenv').config()
 const sqlite = require('better-sqlite3')
 const mapValues = require('lodash/mapValues')
 
@@ -11,220 +12,144 @@ class Persistance {
     this.db.prepare('CREATE TABLE IF NOT EXISTS wgleute ' +
       '(id INTEGER PRIMARY KEY, ' +
       'name VARCHAR NOT NULL, ' +
-      'paypal VARCAR NULL)')
+      'paypal VARCAR NULL, ' +
+      'deleted_at DATETIME NULL)')
       .run();
     this.db.prepare('CREATE TABLE IF NOT EXISTS ausgaben ' +
       '(id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, ' +
-      'bezeichnung VARCHAR NOT NULL, ' +
+      'von INTEGER NOT NULL, ' +
       'betrag INTEGER NOT NULL, ' +
-      'wgmensch INTEGER NOT NULL, ' +
-      'empfaenger INTEGER NULL,' +
-      'created_at DATETIME DEFAULT CURRENT_TIMESTAMP)')
+      'is_settlement INTEGER DEFAULT 0,' +
+      'betrifft TEXT NOT NULL,' +
+      'bezeichnung VARCHAR NULL, ' +
+      'created_at DATETIME DEFAULT CURRENT_TIMESTAMP,' +
+      'deleted_at DATETIME NULL)')
       .run();
+
+    //this.testDaten()
+  }
+
+  toCent(betrag) {
+    return Math.round((typeof betrag === 'string'
+      ? parseFloat(betrag.trim().replace(/[^0-9.,]*/g, ''))
+      : betrag.trim()) * 100)
   }
 
   wgler(id, name) {
-    this.db.prepare('REPLACE INTO wgleute(id, name) VALUES (@id, @name)')
+    this.db.prepare('REPLACE INTO wgleute(id, name, deleted_at) VALUES (@id, @name, null)')
       .run({id, name});
+  }
+
+  keinWgler(id) {
+    this.db.prepare('UPDATE wgleute SET deleted_at = CURRENT_TIMESTAMP WHERE id = @id')
+      .run({id});
   }
 
   paypal(id, handle) {
     this.db.prepare('UPDATE wgleute SET paypal = @handle WHERE id = @id')
-      .run({handle, id});
+      .run({id, handle});
   }
 
-  ausgabe(wgmensch, betrag, bezeichnung) {
-    let betrag_cent = (typeof betrag === 'string'
-      ? parseFloat(betrag.replace(/[^0-9.,]*/g, ''))
-      : betrag) * 100
-    betrag_cent = betrag_cent > 0 ? betrag_cent * -1 : betrag_cent
+  wgLeuts() {
+    return this.db.prepare('SELECT id from wgleute WHERE deleted_at is null').all().map(({id}) => id);
+  }
 
-    this.db.prepare('INSERT INTO ausgaben (bezeichnung, betrag, wgmensch) VALUES (@bezeichnung, @betrag, @wgmensch)')
+  ausgabe(von, betrag, bezeichnung) {
+    // snapshot wg leute zum zeitpunkt der ausgabe
+    const betrifft = this.wgLeuts().filter((id) => id !== von).join(',')
+    console.log('betrifft:', betrifft)
+    this.db.prepare('INSERT INTO ausgaben (bezeichnung, betrag, von, betrifft) VALUES (@bezeichnung, @betrag, @von, @betrifft)')
       .run({
         bezeichnung: bezeichnung.trim(),
-        betrag: betrag_cent,
-        wgmensch,
+        betrag: this.toCent(betrag),
+        von,
+        betrifft
       });
   }
 
-  begleichen(wgmensch, betrag, empfaenger) {
-    let betrag_cent = (typeof betrag === 'string'
-      ? parseFloat(betrag.replace(/[^0-9.,]*/g, ''))
-      : betrag) * 100
-    betrag_cent = betrag_cent < 0 ? betrag_cent * -1 : betrag_cent
+  invalidate_ausgabe(id) {
+    this.db.prepare('UPDATE ausgaben SET deleted_at = CURRENT_TIMESTAMP WHERE id = @id')
+      .run({id});
+  }
 
+  begleichen(von, an, betrag) {
     this.db.prepare(
-      'INSERT INTO ausgaben (bezeichnung, betrag, wgmensch, empfaenger) VALUES (@ezeichnung, @betrag, @wgmensch, @empfaenger)')
+      'INSERT INTO ausgaben (is_settlement, betrag, von, betrifft) VALUES (@is_settlement, @betrag, @von, @betrifft)')
       .run({
-        bezeichnung: 'BEGLEICHEN',
-        betrag: betrag_cent,
-        wgmensch,
-        empfaenger,
+        is_settlement: 1,
+        betrag: this.toCent(betrag),
+        von,
+        betrifft: `${an}`,
       });
+  }
+
+  testDaten() {
+    const a = [
+      {id: 1, name: 'bernie'},
+      {id: 2, name: 'ert'},
+      {id: 3, name: 'sherlock'},
+      {id: 4, name: 'hubertus'},
+      {id: 5, name: 'otto'}
+    ]
+    a.forEach((e) => this.wgler(e.id, e.name))
+
+    const b = [
+      {id: 4},
+      {id: 5}
+    ]
+    b.forEach((e) => this.keinWgler(e.id))
+
+    const ids = [process.env.OWN_TWITTER_ID, ...a.map(e => e.id)]
+
+    for (let i = 0; i < 100; i++) {
+      this.ausgabe(
+        ids[Math.floor(Math.random()*ids.length)],
+        `${(Math.random()*100)+1}€`,
+        'Gummibären'
+      )
+    }
+
+    function ranId(ids, except) {
+      const id = ids[Math.floor(Math.random()*ids.length)]
+      return (id === except) ? ranId(ids, except) : id;
+    }
+
+    for (let i = 0; i < 20; i++) {
+      const von = ids[Math.floor(Math.random()*ids.length)];
+      this.begleichen(
+        von,
+        ranId(ids, von),
+        `${(Math.random()*50)+1}€`,
+      )
+    }
   }
 
   schulden(wgmensch) {
-    // const leute =  this.db.prepare('SELECT * from wgleute').all();
-    const ausgaben = this.db.prepare('SELECT * from ausgaben').all();
+    const wgLeutzIds = this.db.prepare('SELECT id from wgleute').all().map(({id}) => id);
+    const cashflow = this.db.prepare('SELECT * from ausgaben WHERE deleted_at is null').all();
 
-    // const leute =  this.db.prepare('SELECT * from wgleute').all();
-    // const ausgaben = [
-    //   {
-    //     bezeichnung: 'eier',
-    //     betrag: -2344,
-    //     wgmensch: 1,
-    //     empfaenger: null,
-    //     created_at: '2020-10-03 20:13:24'
-    //   },
-    //   {
-    //     bezeichnung: 'müll',
-    //     betrag: -9872,
-    //     wgmensch: 2,
-    //     empfaenger: null,
-    //     created_at: '2020-10-03 20:13:24'
-    //   },
-    //   {
-    //     bezeichnung: 'putzeimer',
-    //     betrag: -234,
-    //     wgmensch: 3,
-    //     empfaenger: null,
-    //     created_at: '2020-10-03 20:13:24'
-    //   },
-    //   {
-    //     bezeichnung: 'irgendwas',
-    //     betrag: -5345,
-    //     wgmensch: 4,
-    //     empfaenger: null,
-    //     created_at: '2020-10-03 20:13:24'
-    //   },
-    //   {
-    //     bezeichnung: 'nochwas',
-    //     betrag: -1234,
-    //     wgmensch: 4,
-    //     empfaenger: null,
-    //     created_at: '2020-10-03 20:13:24'
-    //   },
-    //   {
-    //     bezeichnung: 'BEGLEICHUNG',
-    //     betrag: 1000,
-    //     wgmensch: 1,
-    //     empfaenger: 4,
-    //     created_at: '2020-10-03 20:13:24'
-    //   },
-    //   {
-    //     bezeichnung: 'BEGLEICHUNG',
-    //     betrag: 2000,
-    //     wgmensch: 1,
-    //     empfaenger: 2,
-    //     created_at: '2020-10-03 20:13:24'
-    //   },
-    // ];
+    let matrix = wgLeutzIds.reduce((m, id, _, ids) => ({...m, [id]: ids.reduce((acc, vId) => ({...acc, [vId]: 0}),{}) }), {})
+    console.log(matrix)
 
-    const aufwand = ausgaben.filter(({empfaenger}) => !empfaenger).reduce((acc, ausgabe) => {
-      if (!acc[ausgabe.wgmensch]) {
-        acc[ausgabe.wgmensch] = ausgabe.betrag
+    // iterate through all ausgaben and sum it together
+    cashflow.forEach(({ von, betrag, betrifft, is_settlement }) => {
+      if (!is_settlement) {
+        // ist ausgabe
+        const relevant_leute = betrifft.split(',')
+        const anteil = betrag/relevant_leute.length
+        // jeder bekommt den anteil angerechnet, außer die spendierhose
+        relevant_leute
+          .forEach((id) => { matrix[id][`${von}`] += anteil })
       } else {
-        acc[ausgabe.wgmensch] += ausgabe.betrag
+        // ist begleichung, ziehe betrag von schulden ab
+        console.log({ von, betrag, betrifft, is_settlement })
+        matrix[betrifft][`${von}`] -= betrag
       }
-      return acc;
-    }, {});
+    })
 
-    const beglichen = ausgaben.filter(({empfaenger}) => empfaenger != null).reduce((acc, {wgmensch, empfaenger, betrag}) => {
-      if (!acc[wgmensch]) {
-        acc[wgmensch] = {}
-      }
-
-      acc[wgmensch][empfaenger] = !acc[wgmensch][empfaenger]
-        ? betrag
-        : acc[wgmensch][empfaenger] + betrag
-
-      return acc;
-    }, {});
-
-    // aufwand = Aufwand der jewieligen Person:
-    // {
-    //   'Person1': -123,
-    //   'Person2': -53,
-    //   ...
-    // }
-
-    // beglichen = Begleichungen der jewieligen Person:
-    // {
-    //   'Person1': {
-    //      'Person2': 23,
-    //      'Person3': 72,
-    //      ...
-    //   },
-    //   'Person2': {
-    //      'Person1': 32,
-    //      'Person3': 21,
-    //       ...
-    //   },
-    //   ...
-    // }
-
-    // aufwand normalisiert
-
-    const geringsterAufwand = Math.max(...Object.values(aufwand));
-    const aufwand_norm = {1: -2110, 2: -9638, 3: 0, 4: -6345} // mapValues(aufwand, (betrag) => betrag - geringsterAufwand)
-    // aufwand_norm = Aufwand normalisuert der jewieligen Person:
-    // {
-    //   'Person1': -123, -> 45 -> -78
-    //   'Person2': -12, -> 45 -> 33
-    //   'Person3': 0, -> 45 -> 45
-    //   ...
-    // }
-    // 135/3 = 45
-
-    const schulden = Object.entries(aufwand_norm).reduce(
-      (acc, [wgmensch, aufwand], i, leutz) => {
-        // name schuldet wgmensch seinen anteil
-        const anteil = aufwand / leutz.length
-        leutz.filter(([id]) => id !== wgmensch).forEach(([name]) => {
-          acc[name][wgmensch] += anteil
-        })
-        return acc;
-      },
-      Object.keys(aufwand).reduce((acc, name, i, wgmenschen) => {
-        acc[name] = {}
-        wgmenschen.forEach((wgmensch) => {
-          acc[name][wgmensch] = 0
-        })
-        return acc;
-      }, aufwand),
-    );
-
-    // {
-    //   'Person1': {
-    //     'Person2': -123,
-    //     'Person3': -12,
-    //   },
-    //   'Person2': {
-    //     'Person1': -123,
-    //     'Person3': -12,
-    //   },
-    //   'Person3': {
-    //     'Person1': -41 (-123/3),
-    //     'Person2': -4 (-12/3),
-    //   },
-    // }
-
-    // schulden mit begleichungen verrechnen
-
-    const verrechnet = Object.entries(beglichen).reduce((acc, [selbst, beglichen]) => {
-      acc[selbst] = Object.entries(acc[selbst]).reduce((ctx, [gegenüber, schuld]) => {
-        if(schuld === 0) {
-          return ctx;
-        }
-
-        console.log(gegenüber, schuld)
-        ctx[gegenüber] = schuld + beglichen[gegenüber]
-        return ctx;
-      }, { ...acc[selbst] })
-      return acc;
-    }, { ...schulden })
-
-    return verrechnet[wgmensch];
+    matrix = mapValues(matrix, (s) => mapValues(s, (b) => Math.round(b)))
+    console.log(matrix)
+    return matrix[wgmensch]
   }
 }
 
