@@ -1,0 +1,16 @@
+{
+  "name": "wgkasse",
+  "version": "1.0.0",
+  "author": "Jonathan Wischhusen",
+  "dependencies": {
+    "better-sqlite3": "^7.1.1",
+    "dotenv": "^8.2.0",
+    "giphy-api": "^2.0.1",
+    "lodash": "^4.17.20",
+    "telegraf": "^3.38.0",
+    "telegraf-inline-menu": "^5.2.1"
+  },
+  "devDependencies": {
+    "var_dump": "^1.0.5"
+  }
+}
