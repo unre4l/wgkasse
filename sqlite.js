@@ -125,7 +125,9 @@ class Persistance {
   }
 
   schulden(wgmensch) {
-    const wgLeutzIds = this.db.prepare('SELECT id from wgleute').all().map(({id}) => id);
+    const wgLeutz = this.db.prepare('SELECT  * from wgleute').all();
+    const wgLeutzIds = wgLeutz.map(({id}) => id);
+    const wgLeutzById = wgLeutz.reduce((wg, {id, name, paypal }) => ({...wg, [id]: { name, paypal } }), {})
     const cashflow = this.db.prepare('SELECT * from ausgaben WHERE deleted_at is null').all();
 
     let matrix = wgLeutzIds.reduce((m, id, _, ids) => ({...m, [id]: ids.reduce((acc, vId) => ({...acc, [vId]: 0}),{}) }), {})
@@ -148,8 +150,10 @@ class Persistance {
     })
 
     matrix = mapValues(matrix, (s) => mapValues(s, (b) => Math.round(b)))
-    console.log(matrix)
-    return matrix[wgmensch]
+    return Object.values(mapValues(
+      matrix[wgmensch],
+      (schulden, wgmensch) => ({ id: wgmensch, name: wgLeutzById[wgmensch].name, schulden,  paypal: wgLeutzById[wgmensch].paypal }),
+    ))
   }
 }
 

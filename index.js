@@ -5,69 +5,6 @@ const Markup = require('telegraf/markup')
 const session = require('telegraf/session')
 const Extra = require('telegraf/extra')
 
-
-// const Stage = require('telegraf/stage')
-// const WizardScene = require('telegraf/scenes/wizard')
-// const {MenuTemplate, MenuMiddleware, createBackMainMenuButtons} = require('telegraf-inline-menu')
-
-
-// const EinkaufListe =
-
-// const soll = ['Spühli', 'Klopapier', 'Pilze', 'handtücher', 'Topf', 'Knobi', 'Zwiebel', 'Obst', 'Tücher', 'Müllsäcke']
-//
-//
-// const EinkaufMenu = new MenuTemplate(ctx => 'Was hast du eingekauft?')
-// EinkaufMenu.select('einkauf', soll, {
-//   isSet: (ctx, key) => {
-//     console.log('isset', key,  ctx.session.einkauf)
-//     return ctx.session.einkauf === key
-//   },
-//   set: (ctx, key) => {
-//     console.log('set', key)
-//     ctx.session.einkauf = key
-//   },
-//
-//   do: async ctx => {
-//     ctx.editMessageReplyMarkup({
-//       inline_keyboard: null,
-//     })
-//     return true;
-//   },
-// })
-//
-// const EinkaufMenuMiddleware = new MenuMiddleware('/einkauf/', EinkaufMenu)
-//
-//
-// const EinkaufScene = new WizardScene('Einkauf',
-//   (ctx) => {
-//     ctx.wizard.state.einkauf = {};
-//     EinkaufMenuMiddleware.replyToContext(ctx)
-//     return ctx.wizard.next()
-//   },
-//   (ctx) => {
-//     console.log('aaaaaaaaaaaaaaaasd')
-//     console.log(ctx)
-//     const einkauf = ctx.message.text.trim().toLocaleLowerCase()
-//     ctx.wizard.state.einkauf = einkauf
-//     return ctx.wizard.next()
-//   },
-//   (ctx) => {
-//     ctx.reply(`Wie viel hast du für ${ctx.session.einkauf} ausgegeben?`);
-//   },
-//   (ctx) => {
-//     const betrag = ctx.message.text
-//     Kasse.ausgabe(ctx.from.id, betrag, ctx.wizard.state.einkauf)
-//     ctx.replyWithVideo(
-//       `https://i.giphy.com/media/${buyGifs[Math.floor(Math.random() * buyGifs.length)]}/100w.gif`,
-//       {caption: `${ctx.from.first_name} hat ${bezeichnung} für ${betrag}€ gekauft.`})
-//     return ctx.scene.leave()
-//   },
-// );
-
-
-// const stage = new Stage()
-// stage.register(EinkaufScene)
-
 const WgGroupOnly = async ({chat, from: {id, first_name}}, next) => {
   if (chat.id !== parseInt(process.env.WG_KASSSE_GROUP_ID, 10)) {
     return;
@@ -82,40 +19,30 @@ bot.telegram.getMe().then((botInfo) => {
 })
 bot.use(WgGroupOnly)
 bot.use(session())
-// bot.use(menuMiddleware)
-// bot.use(stage.middleware())
-
-// bot.command('einkauf', ctx => {
-//   ctx.scene.enter('Einkauf')
-// })
-
-// bot.command('paypal', (ctx) => )
-// bot.action('cancel', (ctx) => ctx.scene.leave())
-
-
-// bot.hears('meine schulden', (ctx) => {
-//   const empfaenger = ctx.message.entities[0].user
-//   // const bezeichnung = ctx.match[1].trim();
-//   // const betrag = ctx.match[2].trim();
-//   // console.log(bezeichnung, betrag)
-//   // Kasse.ausgabe(ctx.from.id, betrag, bezeichnung)
-//   // return ctx.replyWithVideo(
-//   //   `https://i.giphy.com/media/${buyGifs[Math.floor(Math.random() * buyGifs.length)]}/100w.gif`,
-//   //   {caption: `${ctx.from.first_name} hat ${bezeichnung} für ${betrag}€ gekauft.`})
-// })
-
-
-bot.command('pyramid', (ctx) => {
-  return ctx.reply('Keyboard wrap', Extra.markup(
-    Markup.keyboard(['one', 'two', 'three', 'four', 'five', 'six'], {
-      wrap: (btn, index, currentRow) => currentRow.length >= (index + 1) / 2
-    })
-  ))
-})
 
 bot.command('schulden', async (ctx) => {
-  await Kasse.schulden(ctx.from.id)
+  const schulden = await Kasse.schulden(ctx.from.id)
+  return ctx.reply('Deine Schulden:', Extra.markup(
+    Markup.inlineKeyboard([
+      ...schulden.map(({id, schulden, name, paypal}) => {
+        const schuld = (schulden / 100).toFixed(2)
+        const dataCb = {
+          von: ctx.from.id,
+          an: id,
+          betrag: schuld,
+        }
+        return [
+          Markup.urlButton(`${schuld}€ bei ${name}`, `${paypal}/${schuld}`),
+          Markup.callbackButton('Schuld beglichen', `begleichen-${JSON.stringify(dataCb)}`)
+        ];
+      }),
+    ])
+  ))
   // console.log(leute, ausgaben)
+})
+
+bot.action(/^begleichen-(.*)$/, ctx => {
+  console.log(ctx.match)
 })
 
 // register spendierhosen
@@ -124,7 +51,7 @@ bot.hears(/([a-zA-ZüöäÜÖÄ\ß\:\ \_\-]{4,}) ([0-9]+(,|.)?[0-9]*) ?€/, (ct
   Kasse.ausgabe(ctx.from.id, betrag, bezeichnung)
   const gifs = ['l0MYDoN32puQXNmx2', 'gTURHJs4e2Ies', 'fAhOtxIzrTxyE', 'cUSJDZLX6zab6', 'LZyFp6pObiyuk'];
   const gif = `https://i.giphy.com/media/${gifs[Math.floor(Math.random() * gifs.length)]}/100w.gif`
-  return ctx.replyWithVideo(gif,{caption: `${ctx.from.first_name} hat ${bezeichnung} für ${betrag}€ gekauft.`})
+  return ctx.replyWithVideo(gif, {caption: `${ctx.from.first_name} hat ${bezeichnung} für ${betrag}€ gekauft.`})
 })
 
 // set paypal adress for quick cashflow
