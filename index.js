@@ -22,18 +22,13 @@ bot.use(session())
 
 bot.command('schulden', async (ctx) => {
   const schulden = await Kasse.schulden(ctx.from.id)
-  return ctx.reply('Deine Schulden:', Extra.markup(
+  ctx.reply(JSON.stringify(schulden))
+  return ctx.replyWithMarkdown(`[${ctx.from.first_name}](tg://user?id=${ctx.from.id}) Deine Schulden:`, Extra.markup(
     Markup.inlineKeyboard([
       ...schulden.map(({id, schulden, name, paypal}) => {
         const schuld = (schulden / 100).toFixed(2)
-        const dataCb = {
-          von: ctx.from.id,
-          an: id,
-          betrag: schuld,
-        }
         return [
-          Markup.urlButton(`${schuld}€ bei ${name}`, `${paypal}/${schuld}`),
-          Markup.callbackButton('Schuld beglichen', `begleichen-${JSON.stringify(dataCb)}`)
+          Markup.urlButton(`${schuld}€ bei ${name}`, paypal ? `${paypal}/${schuld}` : 'https://paypal.com'),
         ];
       }),
     ])
@@ -41,12 +36,12 @@ bot.command('schulden', async (ctx) => {
   // console.log(leute, ausgaben)
 })
 
-bot.action(/^begleichen-(.*)$/, ctx => {
+bot.command(/^begleichen-(.*)$/i, ctx => {
   console.log(ctx.match)
 })
 
 // register spendierhosen
-bot.hears(/([a-zA-ZüöäÜÖÄ\ß\:\ \_\-]{4,}) ([0-9]+(,|.)?[0-9]*) ?€/, (ctx) => {
+bot.command(/^ausgabe ([a-zA-ZüöäÜÖÄ\ß\:\ \_\-]{4,}) ([0-9]+(,|.)?[0-9]*) ?€/i, (ctx) => {
   const [_, bezeichnung, betrag] = ctx.match;
   Kasse.ausgabe(ctx.from.id, betrag, bezeichnung)
   const gifs = ['l0MYDoN32puQXNmx2', 'gTURHJs4e2Ies', 'fAhOtxIzrTxyE', 'cUSJDZLX6zab6', 'LZyFp6pObiyuk'];

@@ -153,7 +153,7 @@ class Persistance {
     return Object.values(mapValues(
       matrix[wgmensch],
       (schulden, wgmensch) => ({ id: wgmensch, name: wgLeutzById[wgmensch].name, schulden,  paypal: wgLeutzById[wgmensch].paypal }),
-    ))
+    )).filter(o => o.schulden > 0)
   }
 }
 
